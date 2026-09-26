@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Qdrant Edge — Local vector database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: memora-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./memory_vault/vectors:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+
+  # Ollama — Local LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: memora-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: memora-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./memory_vault:/app/memory_vault
+      - ./sync_queue:/app/sync_queue
+      - ./sqlite:/app/sqlite
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2
+      - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+    depends_on:
+      - qdrant
+      - ollama
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: memora-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
